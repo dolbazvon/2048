@@ -1,0 +1,560 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>2048 Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            touch-action: none; /* Prevent scrolling on mobile swipe */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .board-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-rows: repeat(4, minmax(0, 1fr));
+        }
+
+        /* Tile appearance animations */
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            80% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes mergePulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.18); filter: brightness(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        .tile-new {
+            animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        .tile-merged {
+            animation: mergePulse 0.25s ease-in-out forwards;
+        }
+
+        /* Classic Tile Colors with Modern Gradients */
+        .tile-2    { background: linear-gradient(135deg, #eee4da, #ece0d1); color: #776e65; }
+        .tile-4    { background: linear-gradient(135deg, #ede0c8, #ebdcb5); color: #776e65; }
+        .tile-8    { background: linear-gradient(135deg, #f2b179, #f0a05e); color: #f9f6f2; }
+        .tile-16   { background: linear-gradient(135deg, #f59563, #f38349); color: #f9f6f2; }
+        .tile-32   { background: linear-gradient(135deg, #f67c5f, #f46341); color: #f9f6f2; }
+        .tile-64   { background: linear-gradient(135deg, #f65e3b, #e44d26); color: #f9f6f2; }
+        .tile-128  { background: linear-gradient(135deg, #edcf72, #eac753); color: #f9f6f2; box-shadow: 0 0 12px rgba(237, 207, 114, 0.5); }
+        .tile-256  { background: linear-gradient(135deg, #edcc61, #e6bf40); color: #f9f6f2; box-shadow: 0 0 16px rgba(237, 204, 97, 0.6); }
+        .tile-512  { background: linear-gradient(135deg, #edc850, #e3b62b); color: #f9f6f2; box-shadow: 0 0 20px rgba(237, 200, 80, 0.7); }
+        .tile-1024 { background: linear-gradient(135deg, #edc53f, #dda819); color: #f9f6f2; box-shadow: 0 0 24px rgba(237, 197, 63, 0.8); }
+        .tile-2048 { background: linear-gradient(135deg, #edc22e, #cca000); color: #f9f6f2; box-shadow: 0 0 30px rgba(237, 194, 46, 0.9); }
+        .tile-super{ background: linear-gradient(135deg, #3c3a32, #1f1e1a); color: #f9f6f2; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+
+        .btn-action {
+            transition: all 0.15s ease;
+        }
+        .btn-action:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body class="bg-amber-50 text-stone-800 min-h-screen flex flex-col justify-between items-center p-4">
+
+    <header class="w-full max-w-md flex flex-col gap-4 mt-2">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-5xl font-extrabold tracking-tight text-stone-800">2048</h1>
+                <p class="text-sm font-semibold text-stone-500 mt-1">Join numbers to reach <span class="text-amber-600 font-bold">2048!</span></p>
+            </div>
+
+            <!-- Scores Container -->
+            <div class="flex gap-2 text-center">
+                <div class="bg-stone-300/70 rounded-xl px-4 py-2 min-w-[75px] shadow-inner">
+                    <span class="block text-xs uppercase font-bold text-stone-600 tracking-wider">Score</span>
+                    <span id="score" class="text-xl font-black text-stone-800">0</span>
+                </div>
+                <div class="bg-stone-300/70 rounded-xl px-4 py-2 min-w-[75px] shadow-inner">
+                    <span class="block text-xs uppercase font-bold text-stone-600 tracking-wider">Best</span>
+                    <span id="best-score" class="text-xl font-black text-stone-800">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Controls Bar -->
+        <div class="flex justify-between items-center bg-stone-200/80 p-1.5 rounded-2xl shadow-sm">
+            <button id="btn-new-game" class="btn-action flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-md transition-colors">
+                <i class="fa-solid fa-rotate-right"></i> New Game
+            </button>
+            <div class="flex items-center gap-2">
+                <button id="btn-undo" class="btn-action flex items-center gap-1.5 bg-stone-300 hover:bg-stone-400 text-stone-700 disabled:opacity-40 disabled:cursor-not-allowed px-3.5 py-2.5 rounded-xl font-bold text-sm transition-colors" disabled>
+                    <i class="fa-solid fa-rotate-left"></i> Undo
+                </button>
+                <button id="btn-sound" class="btn-action bg-stone-300 hover:bg-stone-400 text-stone-700 p-2.5 rounded-xl transition-colors" title="Toggle Sound">
+                    <i id="sound-icon" class="fa-solid fa-volume-high text-base"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="relative w-full max-w-md aspect-square bg-stone-400/80 p-3 rounded-2xl my-auto shadow-xl">
+        <!-- Background Grid -->
+        <div class="board-grid grid gap-3 w-full h-full">
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+            <div class="bg-stone-300/60 rounded-xl"></div>
+        </div>
+
+        <!-- Dynamic Tile Container -->
+        <div id="tile-container" class="absolute inset-0 p-3 pointer-events-none"></div>
+
+        <!-- Overlay Screen (Game Over / Win) -->
+        <div id="overlay" class="absolute inset-0 bg-stone-900/75 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center p-6 text-center opacity-0 pointer-events-none transition-opacity duration-300 z-20">
+            <h2 id="overlay-title" class="text-4xl font-extrabold text-white mb-2">Game Over!</h2>
+            <p id="overlay-msg" class="text-stone-300 mb-6 font-medium">No more available moves.</p>
+            <div class="flex gap-3">
+                <button id="overlay-btn-keep" class="btn-action hidden bg-stone-700 hover:bg-stone-600 text-white font-bold py-3 px-5 rounded-xl shadow-lg">
+                    Keep Playing
+                </button>
+                <button id="overlay-btn-restart" class="btn-action bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg">
+                    Try Again
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <footer class="w-full max-w-md text-center text-xs text-stone-500 mt-2 mb-1 flex flex-col gap-1">
+        <p><span class="font-bold">How to play:</span> Use <span class="font-bold text-stone-700">Arrow keys / WASD</span> or <span class="font-bold text-stone-700">Swipe</span> to move tiles.</p>
+        <p class="text-stone-400">Created with HTML, CSS, JS & Tone.js</p>
+    </footer>
+
+    <script>
+        /**
+         * 2048 Game Engine Logic
+         */
+        const GRID_SIZE = 4;
+        let board = [];
+        let score = 0;
+        let bestScore = parseInt(localStorage.getItem('2048_best_score') || '0');
+        let undoStack = [];
+        let soundEnabled = true;
+        let hasWon = false;
+        let keepPlaying = false;
+
+        // Sound Effects Controller (Tone.js Synth)
+        let moveSynth, mergeSynth, winSynth;
+        function initAudio() {
+            try {
+                moveSynth = new Tone.MembraneSynth().toDestination();
+                moveSynth.volume.value = -12;
+
+                mergeSynth = new Tone.PolySynth(Tone.Synth).toDestination();
+                mergeSynth.volume.value = -8;
+
+                winSynth = new Tone.PolySynth(Tone.Synth).toDestination();
+                winSynth.volume.value = -4;
+            } catch (e) {
+                console.warn('Audio initialization restricted', e);
+            }
+        }
+
+        function playSound(type, value = 2) {
+            if (!soundEnabled) return;
+            try {
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+                if (type === 'move') {
+                    moveSynth.triggerAttackRelease('C1', '8n');
+                } else if (type === 'merge') {
+                    // Dynamic pitch based on merged tile value
+                    const noteFreq = 200 + Math.log2(value) * 40;
+                    mergeSynth.triggerAttackRelease([noteFreq, noteFreq * 1.25], '16n');
+                } else if (type === 'win') {
+                    winSynth.triggerAttackRelease(['C4', 'E4', 'G4', 'C5'], '4n');
+                }
+            } catch(e) {}
+        }
+
+        // DOM Elements
+        const tileContainer = document.getElementById('tile-container');
+        const scoreEl = document.getElementById('score');
+        const bestScoreEl = document.getElementById('best-score');
+        const btnNewGame = document.getElementById('btn-new-game');
+        const btnUndo = document.getElementById('btn-undo');
+        const btnSound = document.getElementById('sound-icon');
+        const btnSoundToggle = document.getElementById('btn-sound');
+        
+        const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlay-title');
+        const overlayMsg = document.getElementById('overlay-msg');
+        const overlayBtnRestart = document.getElementById('overlay-btn-restart');
+        const overlayBtnKeep = document.getElementById('overlay-btn-keep');
+
+        // Initial setup
+        bestScoreEl.textContent = bestScore;
+        initAudio();
+        initGame();
+
+        function initGame() {
+            board = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(0));
+            score = 0;
+            undoStack = [];
+            hasWon = false;
+            keepPlaying = false;
+            updateUndoButton();
+            hideOverlay();
+            updateScore(0);
+            
+            // Add initial 2 tiles
+            addRandomTile();
+            addRandomTile();
+            renderBoard();
+        }
+
+        function renderBoard(prevBoard = null, mergedPositions = []) {
+            tileContainer.innerHTML = '';
+
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const value = board[r][c];
+                    if (value > 0) {
+                        const tile = document.createElement('div');
+                        
+                        // Determine tile classes
+                        let tileClass = `tile-${value <= 2048 ? value : 'super'}`;
+                        const isNew = prevBoard && prevBoard[r][c] === 0;
+                        const isMerged = mergedPositions.some(p => p.r === r && p.c === c);
+
+                        let animationClass = '';
+                        if (isMerged) animationClass = 'tile-merged';
+                        else if (isNew) animationClass = 'tile-new';
+
+                        tile.className = `absolute flex items-center justify-center font-extrabold rounded-xl shadow-md transition-all duration-100 ${tileClass} ${animationClass}`;
+                        
+                        // Positioning calculations (% based for responsive alignment)
+                        const tileSize = 23.5; // percent width/height
+                        const gapSize = 2; // percent gap spacing
+                        const top = r * (tileSize + gapSize) + gapSize / 2;
+                        const left = c * (tileSize + gapSize) + gapSize / 2;
+
+                        tile.style.top = `${top}%`;
+                        tile.style.left = `${left}%`;
+                        tile.style.width = `${tileSize}%`;
+                        tile.style.height = `${tileSize}%`;
+
+                        // Font sizing based on number length
+                        if (value >= 1000) tile.style.fontSize = '1.25rem';
+                        else if (value >= 100) tile.style.fontSize = '1.6rem';
+                        else tile.style.fontSize = '2rem';
+
+                        tile.textContent = value;
+                        tileContainer.appendChild(tile);
+                    }
+                }
+            }
+        }
+
+        function addRandomTile() {
+            const emptyCells = [];
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (board[r][c] === 0) emptyCells.push({ r, c });
+                }
+            }
+
+            if (emptyCells.length > 0) {
+                const { r, c } = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                board[r][c] = Math.random() < 0.9 ? 2 : 4;
+            }
+        }
+
+        // Save snapshot for Undo
+        function saveState() {
+            if (undoStack.length >= 5) undoStack.shift(); // Max 5 undos
+            undoStack.push({
+                board: board.map(row => [...row]),
+                score: score
+            });
+            updateUndoButton();
+        }
+
+        function undo() {
+            if (undoStack.length === 0) return;
+            const lastState = undoStack.pop();
+            board = lastState.board;
+            score = lastState.score;
+            updateScore(0);
+            renderBoard();
+            updateUndoButton();
+            hideOverlay();
+        }
+
+        function updateUndoButton() {
+            btnUndo.disabled = undoStack.length === 0;
+        }
+
+        function move(direction) {
+            // Direction: 0: Up, 1: Right, 2: Down, 3: Left
+            let rotated = false;
+            let moved = false;
+            let mergedPositions = [];
+            let scoreGain = 0;
+
+            const prevBoard = board.map(row => [...row]);
+
+            // Save state prior to movement
+            saveState();
+
+            // Rotate board to process everything as Left moves
+            let workBoard = board.map(row => [...row]);
+            if (direction === 0) workBoard = rotateLeft(workBoard);
+            else if (direction === 1) workBoard = rotate180(workBoard);
+            else if (direction === 2) workBoard = rotateRight(workBoard);
+
+            // Process Left slide and merge
+            for (let r = 0; r < GRID_SIZE; r++) {
+                let row = workBoard[r].filter(val => val !== 0);
+                let newRow = [];
+
+                for (let i = 0; i < row.length; i++) {
+                    if (i < row.length - 1 && row[i] === row[i + 1]) {
+                        const mergedVal = row[i] * 2;
+                        newRow.push(mergedVal);
+                        scoreGain += mergedVal;
+                        
+                        // Play merge audio
+                        playSound('merge', mergedVal);
+
+                        // Check Win condition (2048 tile created)
+                        if (mergedVal === 2048 && !hasWon) {
+                            hasWon = true;
+                            setTimeout(showWinOverlay, 300);
+                        }
+
+                        // Map merged position back to original rotation later
+                        mergedPositions.push({ r, c: newRow.length - 1 });
+                        i++; // Skip next tile
+                    } else {
+                        newRow.push(row[i]);
+                    }
+                }
+
+                while (newRow.length < GRID_SIZE) {
+                    newRow.push(0);
+                }
+
+                workBoard[r] = newRow;
+            }
+
+            // Unrotate board back to original orientation
+            if (direction === 0) workBoard = rotateRight(workBoard);
+            else if (direction === 1) workBoard = rotate180(workBoard);
+            else if (direction === 2) workBoard = rotateLeft(workBoard);
+
+            // Check if board changed
+            moved = !boardsEqual(prevBoard, workBoard);
+
+            if (moved) {
+                board = workBoard;
+                addRandomTile();
+                updateScore(scoreGain);
+                playSound('move');
+                renderBoard(prevBoard, transformMergedPositions(mergedPositions, direction));
+
+                // Check Game Over
+                if (isGameOver()) {
+                    setTimeout(showGameOverOverlay, 300);
+                }
+            } else {
+                // Remove redundant undo step if no tiles moved
+                undoStack.pop();
+                updateUndoButton();
+            }
+        }
+
+        // Matrix Rotation Helpers
+        function rotateLeft(matrix) {
+            return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex])).reverse();
+        }
+        function rotateRight(matrix) {
+            return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]).reverse());
+        }
+        function rotate180(matrix) {
+            return rotateRight(rotateRight(matrix));
+        }
+
+        function transformMergedPositions(positions, direction) {
+            // Un-rotate coordinates for merge animations
+            return positions.map(pos => {
+                let { r, c } = pos;
+                if (direction === 0) return { r: c, c: GRID_SIZE - 1 - r };
+                if (direction === 1) return { r: GRID_SIZE - 1 - r, c: GRID_SIZE - 1 - c };
+                if (direction === 2) return { r: GRID_SIZE - 1 - c, c: r };
+                return { r, c };
+            });
+        }
+
+        function boardsEqual(a, b) {
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (a[r][c] !== b[r][c]) return false;
+                }
+            }
+            return true;
+        }
+
+        // Check if moves are possible
+        function isGameOver() {
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (board[r][c] === 0) return false;
+                    if (c < GRID_SIZE - 1 && board[r][c] === board[r][c + 1]) return false;
+                    if (r < GRID_SIZE - 1 && board[r][c] === board[r + 1][c]) return false;
+                }
+            }
+            return true;
+        }
+
+        function updateScore(gained) {
+            score += gained;
+            scoreEl.textContent = score;
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestScoreEl.textContent = bestScore;
+                localStorage.setItem('2048_best_score', bestScore.toString());
+            }
+        }
+
+        function showGameOverOverlay() {
+            overlayTitle.textContent = 'Game Over!';
+            overlayMsg.textContent = 'No available moves left!';
+            overlayBtnKeep.classList.add('hidden');
+            overlay.classList.remove('opacity-0', 'pointer-events-none');
+        }
+
+        function showWinOverlay() {
+            if (keepPlaying) return;
+            playSound('win');
+            overlayTitle.textContent = 'You Win!';
+            overlayMsg.textContent = 'Congratulations! You reached 2048!';
+            overlayBtnKeep.classList.remove('hidden');
+            overlay.classList.remove('opacity-0', 'pointer-events-none');
+        }
+
+        function hideOverlay() {
+            overlay.classList.add('opacity-0', 'pointer-events-none');
+        }
+
+        // Keyboard Controls
+        window.addEventListener('keydown', (e) => {
+            if (overlay.classList.contains('opacity-0') === false && !keepPlaying) return;
+
+            switch (e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    e.preventDefault();
+                    move(0);
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    e.preventDefault();
+                    move(1);
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    e.preventDefault();
+                    move(2);
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    e.preventDefault();
+                    move(3);
+                    break;
+            }
+        });
+
+        // Touch & Swipe Controls
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+
+        document.addEventListener('touchend', (e) => {
+            if (!touchStartX || !touchStartY) return;
+
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+
+            const dx = touchEndX - touchStartX;
+            const dy = touchEndY - touchStartY;
+
+            const minSwipeDistance = 30;
+
+            if (Math.max(Math.abs(dx), Math.abs(dy)) > minSwipeDistance) {
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    // Horizontal swipe
+                    if (dx > 0) move(1); // Right
+                    else move(3); // Left
+                } else {
+                    // Vertical swipe
+                    if (dy > 0) move(2); // Down
+                    else move(0); // Up
+                }
+            }
+
+            touchStartX = 0;
+            touchStartY = 0;
+        }, { passive: true });
+
+        // Action Button Handlers
+        btnNewGame.addEventListener('click', () => initGame());
+        btnUndo.addEventListener('click', () => undo());
+
+        btnSoundToggle.addEventListener('click', () => {
+            soundEnabled = !soundEnabled;
+            if (soundEnabled) {
+                btnSound.className = 'fa-solid fa-volume-high text-base';
+            } else {
+                btnSound.className = 'fa-solid fa-volume-xmark text-base';
+            }
+        });
+
+        overlayBtnRestart.addEventListener('click', () => initGame());
+        overlayBtnKeep.addEventListener('click', () => {
+            keepPlaying = true;
+            hideOverlay();
+        });
+    </script>
+</body>
+</html>
